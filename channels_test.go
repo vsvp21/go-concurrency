@@ -19,7 +19,7 @@ func TestOrDone(t *testing.T) {
 
 	ch <- 1
 
-	assert.Equal(t, 1, i.Load())
+	assert.Equal(t, int64(1), i.Load())
 }
 
 func TestOrDoneCtxCanceled(t *testing.T) {

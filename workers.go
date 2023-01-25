@@ -5,26 +5,58 @@ import (
 	"sync"
 )
 
-func NewWorkerPool(poolSize int) *WorkerPool {
-	return &WorkerPool{
+func NewAwaitingPool[T any](poolSize int, ch <-chan T) *WorkerPool[T] {
+	return &WorkerPool[T]{
 		poolSize: poolSize,
+		ch:       ch,
 		wg:       sync.WaitGroup{},
+		await:    true,
 	}
 }
 
-type WorkerPool struct {
-	poolSize int
-	wg       sync.WaitGroup
+func NewPool[T any](poolSize int, ch <-chan T) *WorkerPool[T] {
+	return &WorkerPool[T]{
+		poolSize: poolSize,
+		ch:       ch,
+		wg:       sync.WaitGroup{},
+		await:    false,
+	}
 }
 
-func (p *WorkerPool) Go(ctx context.Context, fn func(ctx context.Context)) {
-	p.wg.Add(p.poolSize)
+type WorkerPool[T any] struct {
+	poolSize int
+	ch       <-chan T
+	wg       sync.WaitGroup
+	await    bool
+}
+
+func (p *WorkerPool[T]) Go(ctx context.Context, fn func(ctx context.Context, v T)) {
+	p.add()
 	for i := 0; i < p.poolSize; i++ {
 		go func() {
-			defer p.wg.Done()
-			fn(ctx)
+			defer p.done()
+			for v := range OrDone[T](ctx, p.ch) {
+				fn(ctx, v)
+			}
 		}()
 	}
+	p.wait()
+}
 
-	p.wg.Wait()
+func (p *WorkerPool[T]) add() {
+	if p.await {
+		p.wg.Add(p.poolSize)
+	}
+}
+
+func (p *WorkerPool[T]) done() {
+	if p.await {
+		p.wg.Done()
+	}
+}
+
+func (p *WorkerPool[T]) wait() {
+	if p.await {
+		p.wg.Wait()
+	}
 }
